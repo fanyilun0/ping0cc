@@ -148,7 +148,7 @@ class AdvancedPing0CCChecker:
         return False
     
     def extract_ip_info_advanced(self):
-        """高级IP信息提取"""
+        """高级IP信息提取 - 基于ping0.cc页面结构优化"""
         print("📊 提取IP信息...")
         
         # 等待页面完全加载
@@ -158,7 +158,7 @@ class AdvancedPing0CCChecker:
             pass
         
         # 获取页面内容
-        page_text = self.driver.page_source
+        page_source = self.driver.page_source
         
         ip_info = {
             "检测时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -166,96 +166,127 @@ class AdvancedPing0CCChecker:
             "页面URL": self.driver.current_url
         }
         
-        # 使用多种方法提取IP信息
         import re
         
-        # 提取IP地址
-        ip_patterns = [
-            r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b',
-            r'IP[^0-9]*([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})',
-            r'地址[^0-9]*([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})'
-        ]
+        # 从JavaScript变量中提取信息（最准确的方法）
+        js_ip_match = re.search(r"window\.ip\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+        if js_ip_match:
+            ip_info["IP地址"] = js_ip_match.group(1)
         
-        for pattern in ip_patterns:
-            matches = re.findall(pattern, page_text)
-            if matches:
-                ip_info["IP地址"] = matches[0] if isinstance(matches[0], str) else matches[0]
-                break
+        js_ipnum_match = re.search(r"window\.ipnum\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+        if js_ipnum_match:
+            ip_info["IP地址(数字)"] = js_ipnum_match.group(1)
         
-        # 提取位置信息
-        location_patterns = [
-            r'(日本|美国|香港|新加坡|台湾|韩国|中国)[^a-zA-Z]*([^\s<>]{0,20})',
-            r'位置[^>]*>([^<]+)',
-            r'Location[^>]*>([^<]+)'
-        ]
+        js_longitude_match = re.search(r"window\.longitude\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+        if js_longitude_match:
+            ip_info["经度"] = js_longitude_match.group(1)
         
-        for pattern in location_patterns:
-            match = re.search(pattern, page_text)
-            if match:
-                ip_info["IP位置"] = match.group(0)
-                break
+        js_latitude_match = re.search(r"window\.latitude\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+        if js_latitude_match:
+            ip_info["纬度"] = js_latitude_match.group(1)
         
-        # 提取风险信息
-        risk_patterns = [
-            r'(\d+%)[^a-zA-Z]*(?:风险|危险|安全)',
-            r'风控[^0-9]*(\d+%)',
-            r'Risk[^0-9]*(\d+%)'
-        ]
+        js_loc_match = re.search(r"window\.loc\s*=\s*`([^`]+)`", page_source)
+        if js_loc_match:
+            ip_info["IP位置"] = js_loc_match.group(1)
         
-        for pattern in risk_patterns:
-            match = re.search(pattern, page_text)
-            if match:
-                ip_info["风控值"] = match.group(1)
-                break
+        js_asndomain_match = re.search(r"window\.asndomain\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+        if js_asndomain_match:
+            ip_info["ASN域名"] = js_asndomain_match.group(1)
+        
+        js_orgdomain_match = re.search(r"window\.orgdomain\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+        if js_orgdomain_match:
+            ip_info["企业域名"] = js_orgdomain_match.group(1)
         
         # 提取ASN信息
-        asn_match = re.search(r'AS(\d+)', page_text)
+        asn_pattern = r'<a href="[^"]*\/as\/AS(\d+)"[^>]*>AS(\d+)<\/a>'
+        asn_match = re.search(asn_pattern, page_source)
         if asn_match:
             ip_info["ASN"] = f"AS{asn_match.group(1)}"
         
-        # 如果关键信息都没有获取到，保存页面内容用于调试
+        # 提取ASN所有者
+        asn_owner_pattern = r'<div class="name">\s*ASN 所有者\s*</div>\s*<div class="content">\s*(?:<span[^>]*>[^<]*</span>\s*)?([^<\n]+?)(?:\s*<span|</div>)'
+        asn_owner_match = re.search(asn_owner_pattern, page_source, re.DOTALL)
+        if asn_owner_match:
+            ip_info["ASN所有者"] = asn_owner_match.group(1).strip()
+        
+        # 提取企业信息
+        org_pattern = r'<div class="name">\s*企业\s*</div>\s*<div class="content">\s*(?:<span[^>]*>[^<]*</span>\s*)?([^<\n]+?)(?:\s*<span|</div>)'
+        org_match = re.search(org_pattern, page_source, re.DOTALL)
+        if org_match:
+            ip_info["企业"] = org_match.group(1).strip()
+        
+        # 提取IP类型
+        iptype_pattern = r'<span class="label[^"]*">([^<]+)</span>'
+        iptype_matches = re.findall(iptype_pattern, page_source)
+        for iptype in iptype_matches:
+            if "IDC" in iptype or "家庭宽带" in iptype:
+                ip_info["IP类型"] = iptype.strip()
+                break
+        
+        # 提取风控值
+        risk_pattern = r'<span class="value">(\d+%)</span><span class="lab">\s*([^<]+)</span>'
+        risk_match = re.search(risk_pattern, page_source)
+        if risk_match:
+            ip_info["风控值"] = risk_match.group(1)
+            ip_info["风控等级"] = risk_match.group(2).strip()
+        
+        # 提取原生IP信息
+        native_ip_pattern = r'<div class="name">\s*<span>原生 IP</span>.*?</div>\s*<div class="content">\s*<span class="label[^"]*"[^>]*>([^<]+)</span>'
+        native_ip_match = re.search(native_ip_pattern, page_source, re.DOTALL)
+        if native_ip_match:
+            ip_info["原生IP"] = native_ip_match.group(1).strip()
+        
+        # 提取国家旗帜信息
+        flag_pattern = r'<img src="/static/images/flags/([^"]+)\.png"[^>]*>([^<]+)'
+        flag_matches = re.findall(flag_pattern, page_source)
+        if flag_matches:
+            ip_info["国家代码"] = flag_matches[0][0]
+            # IP位置信息已经通过JS变量获取，这里不覆盖
+        
+        # 备用提取方法 - 如果JS变量提取失败
         if not ip_info.get("IP地址"):
-            # 获取页面的可见文本
+            ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+            ip_matches = re.findall(ip_pattern, page_source)
+            if ip_matches:
+                ip_info["IP地址"] = ip_matches[0]
+        
+        # 如果重要信息缺失，记录调试信息
+        missing_fields = []
+        required_fields = ["IP地址", "IP位置", "ASN"]
+        for field in required_fields:
+            if not ip_info.get(field):
+                missing_fields.append(field)
+        
+        if missing_fields:
+            print(f"⚠️ 缺失字段: {', '.join(missing_fields)}")
             try:
                 visible_text = self.driver.find_element(By.TAG_NAME, "body").text
-                ip_info["页面文本"] = visible_text[:1000]  # 保存前1000字符
+                ip_info["调试_页面文本"] = visible_text[:500]
             except:
-                ip_info["页面源码"] = page_text[:1000]
+                ip_info["调试_页面源码"] = page_source[:500]
         
         return ip_info
     
-    def check_ip_advanced(self):
-        """高级IP检查流程"""
+    def check_ip_advanced(self, html_file="ping0.cc.html"):
+        """高级IP检查流程 - 基于本地HTML文件"""
         try:
+            # 检查HTML文件是否存在
+            import os
+            if not os.path.exists(html_file):
+                print(f"❌ HTML文件不存在: {html_file}")
+                return None
+            
             self.setup_stealth_driver()
             
-            # 预热浏览器 - 访问常见网站
-            print("🌍 预热浏览器...")
-            warm_up_sites = ["https://www.baidu.com", "https://www.google.com"]
+            # 获取HTML文件的绝对路径
+            html_path = os.path.abspath(html_file)
+            file_url = f"file://{html_path}"
             
-            for site in warm_up_sites:
-                try:
-                    self.driver.get(site)
-                    self.human_like_delay(2, 4)
-                except:
-                    continue
+            print(f"📂 加载本地HTML文件: {html_file}")
+            self.driver.get(file_url)
             
-            # 访问目标网站
-            print("🎯 访问 ping0.cc...")
-            self.driver.get("https://ping0.cc")
-            
-            # 等待初始加载
-            self.human_like_delay(5, 8)
-            
-            # 检查并绕过机器人检测
-            self.wait_for_bot_detection_bypass()
-            
-            # 额外等待确保页面完全加载
-            print("⏰ 等待页面完全加载...")
-            time.sleep(10)
-            
-            # 最后一次模拟人类行为
-            self.simulate_human_behavior()
+            # 等待页面加载
+            self.human_like_delay(2, 4)
             
             # 提取信息
             ip_info = self.extract_ip_info_advanced()
