@@ -24,7 +24,7 @@ class AdvancedPing0CCChecker:
         self.driver = None
         self.wait = None
         
-    def setup_stealth_driver(self):
+    def setup_stealth_driver(self, proxy_url="http://127.0.0.1:7890"):
         """设置隐秘浏览器驱动"""
         print("🔧 设置高级反检测浏览器...")
         
@@ -37,6 +37,14 @@ class AdvancedPing0CCChecker:
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+        
+        # 代理设置
+        if proxy_url:
+            print(f"🌐 设置代理: {proxy_url}")
+            options.add_argument(f"--proxy-server={proxy_url}")
+            # 忽略证书错误（对于某些代理很有用）
+            options.add_argument("--ignore-certificate-errors")
+            options.add_argument("--ignore-ssl-errors")
         
         # 窗口和显示设置
         options.add_argument("--start-maximized")
@@ -74,48 +82,11 @@ class AdvancedPing0CCChecker:
         
         print("✅ 浏览器设置完成")
     
-    def human_like_delay(self, min_sec=1, max_sec=3):
-        """人类般的随机延迟"""
-        delay = random.uniform(min_sec, max_sec)
-        time.sleep(delay)
-    
-    def simulate_human_behavior(self):
-        """模拟人类行为"""
-        print("👤 模拟人类浏览行为...")
-        
-        try:
-            # 简化的鼠标移动 - 只使用JavaScript
-            print("  模拟鼠标移动...")
-            self.driver.execute_script("""
-                // 简单的鼠标事件模拟
-                var event = new MouseEvent('mousemove', {
-                    'view': window,
-                    'bubbles': true,
-                    'cancelable': true,
-                    'clientX': 300,
-                    'clientY': 200
-                });
-                document.dispatchEvent(event);
-            """)
-            self.human_like_delay(0.5, 1.0)
-            
-        except Exception as e:
-            print(f"⚠️ 鼠标模拟跳过: {e}")
-        
-        # 安全的页面滚动
-        try:
-            scroll_positions = [200, 400, 300, 100, 0]
-            for position in scroll_positions:
-                self.driver.execute_script(f"window.scrollTo(0, {position});")
-                self.human_like_delay(0.8, 1.5)
-        except Exception as e:
-            print(f"⚠️ 滚动操作跳过: {e}")
-    
     def wait_for_bot_detection_bypass(self):
         """等待绕过机器人检测"""
         print("🤖 检测反机器人机制...")
         
-        max_attempts = 5
+        max_attempts = 2
         for attempt in range(max_attempts):
             page_source = self.driver.page_source
             
@@ -126,14 +97,11 @@ class AdvancedPing0CCChecker:
                 # 等待JavaScript执行
                 time.sleep(5 + attempt * 2)
                 
-                # 模拟人类行为
-                self.simulate_human_behavior()
-                
                 # 尝试简单的页面交互
                 try:
                     # 简单点击页面中心
                     self.driver.execute_script("document.body.click();")
-                    self.human_like_delay(1, 2)
+                    time.sleep(random.uniform(1, 2))
                 except:
                     pass
                 
@@ -147,7 +115,7 @@ class AdvancedPing0CCChecker:
         print("⚠️ 可能仍在机器人检测中，继续尝试...")
         return False
     
-    def extract_ip_info_advanced(self):
+    def extract_ip_info_advanced(self, loop_index=1):
         """高级IP信息提取 - 基于ping0.cc页面结构优化"""
         print("📊 提取IP信息...")
         
@@ -161,9 +129,10 @@ class AdvancedPing0CCChecker:
         page_source = self.driver.page_source
         
         ip_info = {
+            "循环索引": loop_index,
             "检测时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "页面标题": self.driver.title,
-            "页面URL": self.driver.current_url
+            "页面URL": self.driver.current_url,
         }
         
         import re
@@ -267,29 +236,49 @@ class AdvancedPing0CCChecker:
         
         return ip_info
     
-    def check_ip_advanced(self, html_file="ping0.cc.html"):
-        """高级IP检查流程 - 基于本地HTML文件"""
+    def check_ip_advanced(self, html_file="ping0.cc.html", proxy_url="http://127.0.0.1:7890", use_real_site=False, loop_index=1):
+        """高级IP检查流程 - 支持本地HTML文件和在线检测"""
         try:
-            # 检查HTML文件是否存在
-            import os
-            if not os.path.exists(html_file):
-                print(f"❌ HTML文件不存在: {html_file}")
-                return None
-            
-            self.setup_stealth_driver()
-            
-            # 获取HTML文件的绝对路径
-            html_path = os.path.abspath(html_file)
-            file_url = f"file://{html_path}"
-            
-            print(f"📂 加载本地HTML文件: {html_file}")
-            self.driver.get(file_url)
-            
-            # 等待页面加载
-            self.human_like_delay(2, 4)
+            if use_real_site:
+                # 使用真实网站检测
+                print("🌐 使用真实网站进行检测...")
+                self.setup_stealth_driver(proxy_url)
+                
+                # 访问真实的ping0.cc网站
+                print("🎯 访问 ping0.cc...")
+                self.driver.get("https://ping0.cc")
+                
+                # 等待页面加载
+                time.sleep(random.uniform(5, 8))
+                
+                # 检查并绕过机器人检测
+                self.wait_for_bot_detection_bypass()
+                
+                # 额外等待确保页面完全加载
+                print("⏰ 等待页面完全加载...")
+                time.sleep(10)
+                
+            else:
+                # 使用本地HTML文件
+                import os
+                if not os.path.exists(html_file):
+                    print(f"❌ HTML文件不存在: {html_file}")
+                    return None
+                
+                self.setup_stealth_driver(proxy_url)
+                
+                # 获取HTML文件的绝对路径
+                html_path = os.path.abspath(html_file)
+                file_url = f"file://{html_path}"
+                
+                print(f"📂 加载本地HTML文件: {html_file}")
+                self.driver.get(file_url)
+                
+                # 等待页面加载
+                time.sleep(random.uniform(2, 4))
             
             # 提取信息
-            ip_info = self.extract_ip_info_advanced()
+            ip_info = self.extract_ip_info_advanced(loop_index)
             
             return ip_info
             
@@ -300,7 +289,7 @@ class AdvancedPing0CCChecker:
         finally:
             if self.driver:
                 self.driver.quit()
-    
+
     def save_results(self, ip_info):
         """保存结果"""
         if not ip_info:
